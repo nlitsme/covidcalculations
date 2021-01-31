@@ -1,3 +1,4 @@
+// list of dutch municipalities
 ginfo = {
 "Amsterdam":{provincie:"Noord-Holland", inwoners:874272, oppervlakte:219.49, land:165.50, dichtheid:5283, inkomen:29.7, politiek:"GL"},
 "Rotterdam":{provincie:"Zuid-Holland", inwoners:652361, oppervlakte:324.16, land:217.57, dichtheid:2998, inkomen:26.2, politiek:"VVD"},

@@ -1,9 +1,13 @@
 <html>
 <head>
+<title>RIVM Covid data</title>
 <meta charset=utf-8 />
 <meta http-equiv=“Pragma” content=”no-cache”>
 <meta http-equiv=“Expires” content=”-1″>
 <meta http-equiv=“CACHE-CONTROL” content=”NO-CACHE”>
+<meta name="keywords" content="covid,statistics,netherlands,rivm">
+<meta name="author" content="Willem Hengeveld, itsme@xs4all.nl">
+<meta name="description" content="show rivm.nl (The Dutch health institute) covid information.">
 <style>
 #controlsdiv {
     position:fixed;
@@ -20,8 +24,8 @@
 </style>
 <script src="filter.js" ></script>
 <script src="gemeenten.js" ></script>
+<script src="jsutils.js" ></script>
 <script language=javascript><!--
-
 
 const RIVMURL = "https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.json";
 
@@ -37,37 +41,13 @@ var bvalue = 0.1;
 var filt = new LowPass(cutoff, bvalue);
 function updfilt()
 {
+    // update the global filter with the new cutoff and b values.
     filt = cutoff ? new LowPass(cutoff, bvalue) : null;
 }
 
-function el()
-{
-    if (arguments.length==0)
-        throw "el needs at least one argument";
-    var tag = arguments[0];
-    var e = document.createElement(tag);
-    var args = [];
-    var attr;
-    for (var i=1 ; i<arguments.length ; i++)
-    {
-        var arg = arguments[i];
-        if (arg instanceof Element)
-            args.push(arg);
-        else if (arg instanceof Map)
-            arg.forEach( (v,k)=>e.setAttribute(k, v) );
-        else if (typeof(arg) == "string")
-            args.push(arg);
-        else if (typeof(arg) == "object")
-            Object.entries(arg).forEach(([k,v])=>e.setAttribute(k, v))
-        else
-            throw "unsupported el argument";
-    }
-    if (args)
-        e.replaceChildren(...args);
-    return e;
-}
 function makegraph(values)
 {
+    // create a graph for the list of values, optionally applying the filter.
     var td = el('td');
     var canvas = el('canvas');
     td.append(canvas);
@@ -99,6 +79,7 @@ function makegraph(values)
 
 function calcdifferences(table)
 {
+    // calculate the difference between entries in the table.
     var res = [];
     var prev;
     for (var ent of table)
@@ -112,11 +93,13 @@ function calcdifferences(table)
     }
     return res;
 }
+
 function makerow(name, data, gi)
 {
+    // create a row in the table
     var tr = el('tr');
 
-    tr.append(maketexttd(name));
+    tr.append(el('td', name));
     var inwoners = gi ? gi.inwoners : 0;
     if (inwoners < minpop)
         return;
@@ -130,27 +113,29 @@ function makerow(name, data, gi)
     var lastweek = table[table.length-8];
     var last18 = table[table.length-19];
 
-    tr.append(makenumtd(fmtpct(today.gevallen/inwoners*100000)));
+    tr.append(makenumtd(today.gevallen/inwoners*100000, 1));
 
     var weekincidence = (today.gevallen-lastweek.gevallen)/inwoners*100000;
     if (weekincidence < mincases)
         return;
-    tr.append(makenumtd(fmtpct(weekincidence)));
+    tr.append(makenumtd(weekincidence, 1));
 
     var rval = (today.gevallen-fourdays.gevallen)/(today.gevallen-last18.gevallen)*18/4;
-    tr.append(makenumtd(fmtpct(rval)));
+    tr.append(makenumtd(rval, 2));
 
     tr.append(makegraph(diff.slice(-90).map( e => e.gevallen )));
 
     var weekincidence = (today.overleden-lastweek.overleden)/inwoners*100000;
-    tr.append(makenumtd(fmtpct(weekincidence)));
+    tr.append(makenumtd(weekincidence, 1));
 
     tr.append(makegraph(diff.slice(-90).map( e => e.overleden )));
 
     return tr;
 }
+
 function createheader(th)
 {
+    // create the table header row
     var headers = [ "Municipality", "population", "total/100k", "cases<br>/week/100k", "rval", "casegraph", "deaths<br>/week/100k", "deathsgraph" ];
 
     var tr = th.insertRow(0);
@@ -160,32 +145,10 @@ function createheader(th)
         tr.appendChild(c);
     }
 }
-function makeslider(label, idtag, minvalue, maxvalue, initval, texttoval, valtotext)
+
+function makesliders()
 {
-    var lbl = el('span')
-    lbl.innerHTML = label;
-    var disp = el('span')
-    disp.id = idtag+".value";
-
-    var inp = el('input')
-    inp.id = idtag;
-    inp.type = "range";
-    inp.min = minvalue;
-    inp.max = maxvalue;
-    inp.value = initval;
-    inp.oninput = function() { texttoval(this.value); disp.innerHTML = valtotext(); update(); };
-    inp.style.transform = "rotate(90deg)";
-    inp.style.width = 100;
-    inp.style.height = 100;
-
-    disp.innerHTML = valtotext();
-
-    var div = el('div', {id:idtag+"div"});
-    div.append(inp, lbl, disp);
-    return div;
-}
-function makedivsliders()
-{
+    // create the sliders for the 'controlsdiv'
     return [
         makeslider("smoothing:<br>", "cutoff", 0, 500, 140, t => { cutoff = Number(t)/1000; updfilt(); }, () => (1/cutoff).toFixed(1)+" days"),
         makeslider("depth:", "depth", 1, 100, 16, t => { bvalue = 4/Number(t); updfilt(); }, () => (4/bvalue).toFixed(0)),
@@ -196,6 +159,7 @@ function makedivsliders()
 
 function bygembydate(table)
 {
+    // reorganize the source data by municipality and date
     var dict = {};
 
     function addto(d, key, date, src)
@@ -225,13 +189,15 @@ function bygembydate(table)
     }
     return dict;
 }
+
 function start()
 {
-
+    // This function is called from body.onLoad, starts the fetch,
+    // and creates the controls and tables.
     fetch(RIVMURL).then(r => r.json()).then( r => { g_table = bygembydate(r); update(); });
 
     var div = document.getElementById("controlsdiv");
-    div.append(...makedivsliders());
+    div.append(...makesliders());
 
     var div = document.getElementById("tablediv");
     var tab = el('table');
@@ -241,41 +207,13 @@ function start()
 
     add_sorter(tab);
 }
-function fmtdate(t)
-{
-    var y = t.getFullYear();
-    var m = (t.getMonth()+1).toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
-    var d = t.getDate().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
-    return y+"-"+m+"-"+d;
-}
-function fmtpct(x)
-{
-    return x.toFixed(1);
-}
-function maketexttd(txt)
-{
-    var td = el('td');
-    td.innerHTML = txt;
-    return td;
-}
-function makedatetd(t)
-{
-    var td = el('td');
-    td.innerHTML = fmtdate(t);
-    td.style.textAlign = 'center';
-    return td;
-}
-
-function makenumtd(txt)
-{
-    var td = el('td');
-    td.innerHTML = txt;
-    td.style.textAlign = 'right';
-    return td;
-}
 
 function update()
 {
+    // the table has three body sections, one for the whole country, 
+    // one section with provinces, and one with the list of municipalities.
+    // The three sections always stay in the same order, entries
+    // within a section can be sorted
     var tab = document.getElementById('table');
     tab.cellSpacing = 0;
     tab.cellPadding = 5;
@@ -305,12 +243,13 @@ function update()
 
 function sortbycolumn(table, th)
 {
+    // sort each section by the specified column.
+    // the 'th' object has extra properties: asc and colnr
     const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
 
     const comparer = (idx, asc) => (a, b) => ((v1, v2) => 
         v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
         )(getCellValue(asc ? a : b, idx), getCellValue(asc ? b : a, idx));
-
 
     for (var oldtbody of Array.from(table.tBodies)) {
         var newtbody = table.createTBody();
@@ -321,8 +260,10 @@ function sortbycolumn(table, th)
     }
     table.currentsortcolumn = th;
 }
+
 function add_sorter(table)
 {
+    // add column sorters to the specified table.
     table.currentsortcolumn = null;
 
     table.querySelectorAll('th').forEach(th => {
@@ -331,7 +272,6 @@ function add_sorter(table)
         th.addEventListener('click', (() => { th.asc = !th.asc; sortbycolumn(table, th); } ))
     });
 }
-
 --></script>
 </head>
 <body onLoad="start()">

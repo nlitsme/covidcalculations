@@ -1,9 +1,13 @@
+// a lowpass filter
 class LowPass {
     sinc(x)
     {
         if (x==0) return 1.0;
         return Math.sin(Math.PI*x) / (Math.PI*x);
     }
+
+    // construct with the cutoff frequency, and 'b' parameter,
+    // a larger 'b', means more latency, and a better filter.
     constructor(fc, b)
     {
         var N = Math.ceil(4/b);
