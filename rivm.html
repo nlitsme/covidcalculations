@@ -1,0 +1,350 @@
+<html>
+<head>
+<meta charset=utf-8 />
+<meta http-equiv=“Pragma” content=”no-cache”>
+<meta http-equiv=“Expires” content=”-1″>
+<meta http-equiv=“CACHE-CONTROL” content=”NO-CACHE”>
+<style>
+#controlsdiv {
+    position:fixed;
+    right:0px;
+    top:100px;
+    width:120px;
+}
+#tablediv {
+    position:absolute;
+    top:140px;
+    left:0px;
+    right:140px;
+}
+</style>
+<script src="filter.js" ></script>
+<script src="gemeenten.js" ></script>
+<script language=javascript><!--
+
+
+const RIVMURL = "https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.json";
+
+// herindelingen:
+//  2021-01-01 : Appingedam, Delfzijl en Loppersum zijn samengevoegd tot: Eemsdelta
+//  2021-01-01 : Haaren  is opgeheven, en verdeeld over Boxtel, Oisterwijk, Vught en Tilburg.
+//  2021-01-01 : Hengelo is van naam veranderd, in: Hengelo (O.)
+
+var mincases = 50;
+var minpop = 10000;
+var cutoff = 1/12;
+var bvalue = 0.1;
+var filt = new LowPass(cutoff, bvalue);
+function updfilt()
+{
+    filt = cutoff ? new LowPass(cutoff, bvalue) : null;
+}
+
+function el()
+{
+    if (arguments.length==0)
+        throw "el needs at least one argument";
+    var tag = arguments[0];
+    var e = document.createElement(tag);
+    var args = [];
+    var attr;
+    for (var i=1 ; i<arguments.length ; i++)
+    {
+        var arg = arguments[i];
+        if (arg instanceof Element)
+            args.push(arg);
+        else if (arg instanceof Map)
+            arg.forEach( (v,k)=>e.setAttribute(k, v) );
+        else if (typeof(arg) == "string")
+            args.push(arg);
+        else if (typeof(arg) == "object")
+            Object.entries(arg).forEach(([k,v])=>e.setAttribute(k, v))
+        else
+            throw "unsupported el argument";
+    }
+    if (args)
+        e.replaceChildren(...args);
+    return e;
+}
+function makegraph(values)
+{
+    var td = el('td');
+    var canvas = el('canvas');
+    td.append(canvas);
+
+    if (filt)
+        values = filt.calc(values);
+
+    var ymax = Math.max(...values);
+    var ymin = Math.min(...values);
+
+    values = values.map( y => (y-ymin)/(ymax-ymin) );
+
+    var cvx = (x) => 2*x;
+
+    canvas.width = cvx(values.length);
+    canvas.height = 40;
+
+    var cvy = (y) => (canvas.height-5-y*(canvas.height-10));
+
+    var ctx = canvas.getContext("2d");
+    ctx.beginPath();
+    ctx.moveTo(0, cvy(values[0]));
+    for (var x=1 ; x<values.length ; x++)
+        ctx.lineTo(cvx(x), cvy(values[x]));
+    ctx.stroke();
+
+    return td;
+}
+
+function calcdifferences(table)
+{
+    var res = [];
+    var prev;
+    for (var ent of table)
+    {
+        if (prev)
+            res.push({
+                gevallen:ent.gevallen-prev.gevallen, 
+                overleden:ent.overleden-prev.overleden, 
+                ziekenhuis:ent.ziekenhuis-prev.ziekenhuis}); 
+        prev = ent;
+    }
+    return res;
+}
+function makerow(name, data, gi)
+{
+    var tr = el('tr');
+
+    tr.append(maketexttd(name));
+    var inwoners = gi ? gi.inwoners : 0;
+    if (inwoners < minpop)
+        return;
+    tr.append(makenumtd(inwoners));
+
+    var table = Object.entries(data).sort().map( ([k,v])=>v );
+    var diff = calcdifferences(table);
+
+    var today = table[table.length-1];
+    var fourdays = table[table.length-5];
+    var lastweek = table[table.length-8];
+    var last18 = table[table.length-19];
+
+    tr.append(makenumtd(fmtpct(today.gevallen/inwoners*100000)));
+
+    var weekincidence = (today.gevallen-lastweek.gevallen)/inwoners*100000;
+    if (weekincidence < mincases)
+        return;
+    tr.append(makenumtd(fmtpct(weekincidence)));
+
+    var rval = (today.gevallen-fourdays.gevallen)/(today.gevallen-last18.gevallen)*18/4;
+    tr.append(makenumtd(fmtpct(rval)));
+
+    tr.append(makegraph(diff.slice(-90).map( e => e.gevallen )));
+
+    var weekincidence = (today.overleden-lastweek.overleden)/inwoners*100000;
+    tr.append(makenumtd(fmtpct(weekincidence)));
+
+    tr.append(makegraph(diff.slice(-90).map( e => e.overleden )));
+
+    return tr;
+}
+function createheader(th)
+{
+    var headers = [ "Municipality", "population", "total/100k", "cases<br>/week/100k", "rval", "casegraph", "deaths<br>/week/100k", "deathsgraph" ];
+
+    var tr = th.insertRow(0);
+    for (var h of headers) {
+        var c = el('th');
+        c.innerHTML = h;
+        tr.appendChild(c);
+    }
+}
+function makeslider(label, idtag, minvalue, maxvalue, initval, texttoval, valtotext)
+{
+    var lbl = el('span')
+    lbl.innerHTML = label;
+    var disp = el('span')
+    disp.id = idtag+".value";
+
+    var inp = el('input')
+    inp.id = idtag;
+    inp.type = "range";
+    inp.min = minvalue;
+    inp.max = maxvalue;
+    inp.value = initval;
+    inp.oninput = function() { texttoval(this.value); disp.innerHTML = valtotext(); update(); };
+    inp.style.transform = "rotate(90deg)";
+    inp.style.width = 100;
+    inp.style.height = 100;
+
+    disp.innerHTML = valtotext();
+
+    var div = el('div', {id:idtag+"div"});
+    div.append(inp, lbl, disp);
+    return div;
+}
+function makedivsliders()
+{
+    return [
+        makeslider("smoothing:<br>", "cutoff", 0, 500, 140, t => { cutoff = Number(t)/1000; updfilt(); }, () => (1/cutoff).toFixed(1)+" days"),
+        makeslider("depth:", "depth", 1, 100, 16, t => { bvalue = 4/Number(t); updfilt(); }, () => (4/bvalue).toFixed(0)),
+        makeslider("mincases:", "mincases", 0, 800, 50, t => mincases = Number(t), () => mincases.toFixed(0)),
+        makeslider("minpop:", "minpop", 0, 100, 10, t => minpop = Number(t)*1000, () => (minpop/1000).toFixed(1)+"K"),
+    ];
+}
+
+function bygembydate(table)
+{
+    var dict = {};
+
+    function addto(d, key, date, src)
+    {
+        if (!d[key]) d[key] = { };
+        if (!d[key][date]) d[key][date] = { overleden:0, ziekenhuis:0, gevallen:0 };
+        d[key][date].overleden += Number(rec.Deceased);
+        d[key][date].ziekenhuis += Number(rec.Hospital_admission);
+        d[key][date].gevallen += Number(rec.Total_reported);
+    }
+
+    for (rec of table)
+    {
+        var date = rec.Date_of_report;
+        var name = rec.Municipality_name;
+        if (name) {
+            if (name == "Loppersum" || name == "Delfzijl" || name == "Appingedam")
+                name = "Eemsdelta";
+            else if (name=="Hengelo (O.)")
+                name = "Hengelo";
+
+            addto(dict, name, date, rec);
+        }
+        var prov = rec.Province.startsWith("Frys")? "Provincie Friesland" : "Provincie "+rec.Province;
+        addto(dict, prov, date, rec);
+        addto(dict, "Nederland", date, rec);
+    }
+    return dict;
+}
+function start()
+{
+
+    fetch(RIVMURL).then(r => r.json()).then( r => { g_table = bygembydate(r); update(); });
+
+    var div = document.getElementById("controlsdiv");
+    div.append(...makedivsliders());
+
+    var div = document.getElementById("tablediv");
+    var tab = el('table');
+    tab.id = "table";
+    createheader(tab.createTHead());
+    div.appendChild(tab);
+
+    add_sorter(tab);
+}
+function fmtdate(t)
+{
+    var y = t.getFullYear();
+    var m = (t.getMonth()+1).toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
+    var d = t.getDate().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
+    return y+"-"+m+"-"+d;
+}
+function fmtpct(x)
+{
+    return x.toFixed(1);
+}
+function maketexttd(txt)
+{
+    var td = el('td');
+    td.innerHTML = txt;
+    return td;
+}
+function makedatetd(t)
+{
+    var td = el('td');
+    td.innerHTML = fmtdate(t);
+    td.style.textAlign = 'center';
+    return td;
+}
+
+function makenumtd(txt)
+{
+    var td = el('td');
+    td.innerHTML = txt;
+    td.style.textAlign = 'right';
+    return td;
+}
+
+function update()
+{
+    var tab = document.getElementById('table');
+    tab.cellSpacing = 0;
+    tab.cellPadding = 5;
+    tab.border = true;
+
+    var bodies = [];
+
+    var tbody = el('tbody');
+    name = "Nederland";
+    data = g_table[name];
+    var row = makerow(name, data, ginfo[name]); if (row) tbody.append(row);
+    bodies.push(tbody);
+
+    var tbody = el('tbody');
+    Object.entries(g_table).forEach( ([name, data]) => { if (!name.startsWith("Provincie")) return; var row = makerow(name, data, ginfo[name]); if (row) tbody.append(row); } );
+    bodies.push(tbody);
+
+    var tbody = el('tbody');
+    Object.entries(g_table).forEach( ([name, data]) => { if (name.startsWith("Provincie") || name=="Nederland") return; var row = makerow(name, data, ginfo[name]); if (row) tbody.append(row); } );
+    bodies.push(tbody);
+
+    tab.replaceChildren(tab.tHead, ...bodies);
+
+    if (tab.currentsortcolumn)
+        sortbycolumn(tab, tab.currentsortcolumn);
+}
+
+function sortbycolumn(table, th)
+{
+    const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
+
+    const comparer = (idx, asc) => (a, b) => ((v1, v2) => 
+        v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
+        )(getCellValue(asc ? a : b, idx), getCellValue(asc ? b : a, idx));
+
+
+    for (var oldtbody of Array.from(table.tBodies)) {
+        var newtbody = table.createTBody();
+        Array.from(oldtbody.children)
+            .sort(comparer(th.colnr, th.asc))
+            .forEach(tr => newtbody.append(tr) );
+        table.removeChild(oldtbody);
+    }
+    table.currentsortcolumn = th;
+}
+function add_sorter(table)
+{
+    table.currentsortcolumn = null;
+
+    table.querySelectorAll('th').forEach(th => {
+        th.colnr = Array.from(th.parentNode.children).indexOf(th);
+        th.asc = true;
+        th.addEventListener('click', (() => { th.asc = !th.asc; sortbycolumn(table, th); } ))
+    });
+}
+
+--></script>
+</head>
+<body onLoad="start()">
+    <div>
+Data from <a href="https://data.rivm.nl/covid-19/">rivm</a>. More tables: <a href="vac.html">vaccinations</a>, <a href="owid.html">OWID country data</a>.<br>
+<br>
+This table shows the current Covid-19 infection levels in the various Dutch municipalities and provinces.
+Click table headers to sort, slide the filter to smooth the graphs, slide 'cutoff' up to turn off smoothing filter, use `mincases` to show less entries.<br><p>
+Created by Willem Hengeveld &lt;<a href="mailto:itsme@xs4all.nl">itsme@xs4all.nl</a>&gt;, <a href="https://itsme.home.xs4all.nl/">homepage</a>.
+    </div>
+
+    <div id="controlsdiv"></div>
+    <div id="tablediv"></div>
+
+</body>
+</html>

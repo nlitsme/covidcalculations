@@ -1,0 +1,328 @@
+<html>
+<head>
+<meta charset=utf-8 />
+<meta http-equiv=“Pragma” content=”no-cache”>
+<meta http-equiv=“Expires” content=”-1″>
+<meta http-equiv=“CACHE-CONTROL” content=”NO-CACHE”>
+<style>
+#controlsdiv {
+    position:fixed;
+    right:0px;
+    top:100px;
+    width:120px;
+}
+#tablediv {
+    position:absolute;
+    top:140px;
+    left:0px;
+    right:140px;
+}
+</style>
+
+<script src="countries.js" ></script>
+<script language=javascript><!--
+
+var g_vacpp = 1.7;
+
+const VACURL = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/vaccinations/vaccinations.csv";
+function el()
+{
+    if (arguments.length==0)
+        throw "el needs at least one argument";
+    var tag = arguments[0];
+    var e = document.createElement(tag);
+    var args = [];
+    var attr;
+    for (var i=1 ; i<arguments.length ; i++)
+    {
+        var arg = arguments[i];
+        if (arg instanceof Element)
+            args.push(arg);
+        else if (arg instanceof Map)
+            arg.forEach( (v,k)=>e.setAttribute(k, v) );
+        else if (typeof(arg) == "string")
+            args.push(arg);
+        else if (typeof(arg) == "object")
+            Object.entries(arg).forEach(([k,v])=>e.setAttribute(k, v))
+        else
+            throw "unsupported el argument";
+    }
+    if (args)
+        e.replaceChildren(...args);
+    return e;
+}
+function makeslider(label, idtag, minvalue, maxvalue, initval, texttoval, valtotext)
+{
+    var lbl = el('span')
+    lbl.innerHTML = label;
+    var disp = el('span')
+    disp.id = idtag+".value";
+
+    var inp = el('input')
+    inp.id = idtag;
+    inp.type = "range";
+    inp.min = minvalue;
+    inp.max = maxvalue;
+    inp.value = initval;
+    inp.oninput = function() { texttoval(this.value); disp.innerHTML = valtotext(); update(); };
+    inp.style.transform = "rotate(90deg)";
+    inp.style.width = 100;
+    inp.style.height = 100;
+
+    disp.innerHTML = valtotext();
+
+    var div = el('div', {id:idtag+"div"});
+    div.append(inp, lbl, disp);
+    return div;
+}
+function makesliders()
+{
+    var tab = el('table');
+    var tr = el('tr');
+
+    var td = el('td');
+    td.append(...makeslider("Required vaccinations per person", "vacpp", 1, 30, 17, t => g_vacpp = Number(t)/10, () => g_vacpp.toFixed(1)));
+    tr.append(td);
+
+    tab.append(tr);
+
+    return tab;
+}
+function makedivsliders()
+{
+    return [
+        makeslider("vacpp:", "vacpp", 1, 30, 17, t => g_vacpp = Number(t)/10, () => g_vacpp.toFixed(1)),
+    ];
+}
+
+function decodecsv(txt)
+{
+    var table = [];
+    var names;
+    for (var line of txt.split("\n")) {
+        if (!line) continue;
+        fields = line.split(",");
+        if (!names)
+            names = fields;
+        else
+            table.push(Object.fromEntries(names.map( (name, i)=> [name, fields[i]] )))
+    }
+    return table;
+}
+function bycountrybydate(table)
+{
+    var dict = {};
+    for (rec of table)
+    {
+        if (!dict[rec.location])
+            dict[rec.location] = {};
+
+        dict[rec.location][rec.date] = rec;
+    }
+    return dict;
+}
+function createheader(th)
+{
+    var headers = [ "Country", "Population", "a week before", "nr vac", "most recent", "nr vac", "pct vac", "estimated date done", "shape" ];
+
+    var tr = th.insertRow(0);
+    for (var h of headers) {
+        var c = el('th');
+        c.innerHTML = h;
+        tr.appendChild(c);
+    }
+}
+function start()
+{
+
+    fetch(VACURL).then(r => r.text()).then( r => { g_table = bycountrybydate(decodecsv(r)); update(); });
+
+    var div = document.getElementById("controlsdiv");
+    div.append(...makedivsliders());
+
+    var div = document.getElementById("tablediv");
+    var tab = el('table');
+    tab.id = "table";
+    createheader(tab.createTHead());
+    div.appendChild(tab);
+
+    add_sorter(tab);
+}
+function fmtdate(t)
+{
+    var y = t.getFullYear();
+    var m = (t.getMonth()+1).toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
+    var d = t.getDate().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
+    return y+"-"+m+"-"+d;
+}
+function fmtpct(x)
+{
+    return x.toFixed(1);
+}
+function maketexttd(txt)
+{
+    var td = el('td');
+    td.innerHTML = txt;
+    return td;
+}
+function makedatetd(t)
+{
+    var td = el('td');
+    td.innerHTML = fmtdate(t);
+    td.style.textAlign = 'center';
+    return td;
+}
+
+function makenumtd(txt)
+{
+    var td = el('td');
+    td.innerHTML = txt;
+    td.style.textAlign = 'right';
+    return td;
+}
+function makegraph(values)
+{
+    var td = el('td');
+    var canvas = el('canvas');
+    td.append(canvas);
+
+    var ymax = Math.max(...values.map(pair=>pair[1]));
+    var ymin = Math.min(...values.map(pair=>pair[1]));
+    var tmin = values[0][0].getTime();
+    var tmax = values[values.length-1][0].getTime();
+
+    values = values.map( ([t,y]) => [t, (y-ymin)/(ymax-ymin)] );
+
+
+    canvas.width = (tmax-tmin)/(86400*1000)*5;
+    canvas.height = 40;
+
+    var cvy = (y) => (canvas.height-5-y*(canvas.height-10));
+    var cvx = (t) => ((t.getTime()-tmin)/(86400*1000)*5);
+
+    var ctx = canvas.getContext("2d");
+    ctx.beginPath();
+    ctx.moveTo(cvx(values[0][0]), cvy(values[0][1]));
+    for (var x=1 ; x<values.length ; x++) {
+        ctx.lineTo(cvx(values[x][0]), cvy(values[x][1]));
+    }
+    ctx.stroke();
+
+    return td;
+}
+function calcdifferences(table)
+{
+    var res = [];
+    var prev;
+    for (var ent of table)
+    {
+        if (prev)
+            res.push([
+                ent[0],
+                ent[1]-prev[1],
+            ]);
+
+        prev = ent;
+    }
+    return res;
+}
+function makerow(name, data, ci)
+{
+    var tr = el('tr');
+
+    tr.append(maketexttd(name));
+    tr.append(makenumtd(ci ? ci.population : 0));
+    
+    var vdata = Object.entries(data).filter(([k,v])=> v.total_vaccinations>0).map(([k,v])=>[new Date(k), Number(v.total_vaccinations)]);
+    
+    var mostrecent = vdata[vdata.length-1];
+    var weekago = vdata[0];
+    for (var i=vdata.length-2 ; i>=0 ; i--)
+        if (mostrecent[0]-vdata[i][0] >= 7*86400*1000) {
+            weekago = vdata[i];
+            break;
+        }
+
+    tr.append(makedatetd(weekago[0]));
+    tr.append(makenumtd(weekago[1]));
+
+    tr.append(makedatetd(mostrecent[0]));
+    tr.append(makenumtd(mostrecent[1]));
+
+    tr.append(makenumtd(fmtpct(mostrecent[1]/(g_vacpp*ci.population)*100)));
+    
+    if ((mostrecent[0]-weekago[0])==0)
+        return;
+
+    var vacrate = (mostrecent[1]-weekago[1]) / (mostrecent[0]-weekago[0]);
+    var vactodo = g_vacpp*ci.population-mostrecent[1];
+    var timetodo = vactodo/vacrate;
+    var timefinished = new Date(mostrecent[0].getTime()+timetodo);
+
+    tr.append(makedatetd(timefinished));
+
+    var diff = calcdifferences(vdata);
+    tr.append(makegraph(diff));
+
+    return tr;
+}
+function update()
+{
+    var tab = document.getElementById('table');
+    tab.cellSpacing = 0;
+    tab.cellPadding = 5;
+    tab.border = true;
+    var oldtbody = tab.tBodies[0];
+    if (oldtbody)
+        tab.removeChild(oldtbody);
+
+    var tbody = tab.createTBody();
+    Object.entries(g_table).forEach( ([name, data]) => { var row = makerow(name, data, cinfo[name]); if (row) tbody.append(row); } );
+
+    if (tab.currentsortcolumn)
+        sortbycolumn(tab, tab.currentsortcolumn);
+}
+function sortbycolumn(table, th)
+{
+    const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
+
+    const comparer = (idx, asc) => (a, b) => ((v1, v2) => 
+        v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
+        )(getCellValue(asc ? a : b, idx), getCellValue(asc ? b : a, idx));
+
+    var oldtbody = table.tBodies[0];
+    var newtbody = table.createTBody();
+    Array.from(oldtbody.children)
+        .sort(comparer(th.colnr, th.asc))
+        .forEach(tr => newtbody.append(tr) );
+    if (oldtbody);
+        table.removeChild(oldtbody);
+
+    table.currentsortcolumn = th;
+}
+
+function add_sorter(table)
+{
+    table.currentsortcolumn = null;
+
+    table.querySelectorAll('th').forEach(th => {
+        th.colnr = Array.from(th.parentNode.children).indexOf(th);
+        th.asc = true;
+        th.addEventListener('click', (() => { th.asc = !th.asc; sortbycolumn(table, th); } ))
+    });
+}
+--></script>
+</head>
+<body onLoad="start()">
+    <div>
+Data from <a href="https://github.com/owid/covid-19-data/blob/master/public/data/vaccinations/">OurWorldInData</a>. More tables: <a href="owid.html">country info</a>, <a href="rivm.html">Dutch municipalities</a>.<br>
+<br>
+This table shows the estimated date when each country's vaccination program will have completed. Click table headers to sort.<br><p>
+Created by Willem Hengeveld &lt;<a href="mailto:itsme@xs4all.nl">itsme@xs4all.nl</a>&gt;, <a href="https://itsme.home.xs4all.nl/">homepage</a>.
+    </div>
+
+    <div id="controlsdiv"></div>
+    <div id="tablediv"></div>
+
+</body>
+</html>
