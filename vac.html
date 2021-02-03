@@ -115,6 +115,7 @@ function makerow(name, data, ci)
     var timefinished = new Date(mostrecent[0].getTime()+timetodo);
 
     tr.append(makenumtd(vacrate*86400*1000, 0));
+    tr.append(makenumtd(vacrate*86400*1000/(inwoners/100000), 0));
     tr.append(makedatetd(timefinished));
 
     var diff = calcdifferences(vdata);
@@ -126,7 +127,7 @@ function makerow(name, data, ci)
 function createheader(th)
 {
     // create the table header row
-    var headers = [ "Country", "Population", "a week before", "nr vac", "most recent", "nr vac", "pct vac", "vac/day", "estimated date done", "shape" ];
+    var headers = [ "Country", "Population", "a week before", "nr vac", "most recent", "nr vac", "pct vac", "vac/day", "vac/day<br>/100k", "estimated date done", "shape" ];
 
     var tr = th.insertRow(0);
     for (var h of headers) {
