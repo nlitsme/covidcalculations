@@ -27,6 +27,7 @@
 <script language=javascript><!--
 
 var g_vacpp = 1.7;
+var g_days = 7;
 
 const VACURL = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/vaccinations/vaccinations.csv";
 function makegraph(values)
@@ -70,7 +71,7 @@ function calcdifferences(table)
         if (prev)
             res.push([
                 ent[0],         // the time
-                ent[1]-prev[1], // the value
+                (ent[1]-prev[1])/(ent[0]-prev[0])*86400*1000, // the value
             ]);
 
         prev = ent;
@@ -92,7 +93,7 @@ function makerow(name, data, ci)
     var mostrecent = vdata[vdata.length-1];
     var weekago = vdata[0];
     for (var i=vdata.length-2 ; i>=0 ; i--)
-        if (mostrecent[0]-vdata[i][0] >= 7*86400*1000) {
+        if (mostrecent[0]-vdata[i][0] >= g_days*86400*1000) {
             weekago = vdata[i];
             break;
         }
@@ -113,6 +114,7 @@ function makerow(name, data, ci)
     var timetodo = vactodo/vacrate;
     var timefinished = new Date(mostrecent[0].getTime()+timetodo);
 
+    tr.append(makenumtd(vacrate*86400*1000, 0));
     tr.append(makedatetd(timefinished));
 
     var diff = calcdifferences(vdata);
@@ -124,7 +126,7 @@ function makerow(name, data, ci)
 function createheader(th)
 {
     // create the table header row
-    var headers = [ "Country", "Population", "a week before", "nr vac", "most recent", "nr vac", "pct vac", "estimated date done", "shape" ];
+    var headers = [ "Country", "Population", "a week before", "nr vac", "most recent", "nr vac", "pct vac", "vac/day", "estimated date done", "shape" ];
 
     var tr = th.insertRow(0);
     for (var h of headers) {
@@ -139,6 +141,7 @@ function makesliders()
     // create the sliders for the 'controlsdiv'
     return [
         makeslider("vacpp:", "vacpp", 1, 30, 17, t => g_vacpp = Number(t)/10, () => g_vacpp.toFixed(1)),
+        makeslider("days:", "days", 1, 30, 7, t => g_days = Number(t), () => g_days.toFixed(0)),
     ];
 }
 
@@ -230,7 +233,10 @@ function add_sorter(table)
     <div>
 Data from <a href="https://github.com/owid/covid-19-data/blob/master/public/data/vaccinations/">OurWorldInData</a>. More tables: <a href="owid.html">country info</a>, <a href="rivm.html">Dutch municipalities</a>.<br>
 <br>
-This table shows the estimated date when each country's vaccination program will have completed. Click table headers to sort.<br><p>
+This table shows the estimated date when each country's vaccination program will have completed.
+    Use the 'vacpp' slider to select how many vaccinations are required per person.
+    Use the 'days' slider to select how many days to average for the calculation.
+The graph shows how many vaccinations are delivered per day. Click table headers to sort.<br><p>
 Created by Willem Hengeveld &lt;<a href="mailto:itsme@xs4all.nl">itsme@xs4all.nl</a>&gt;, <a href="https://itsme.home.xs4all.nl/">homepage</a>.
     </div>
 
