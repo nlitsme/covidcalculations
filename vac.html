@@ -97,6 +97,8 @@ function makerow(name, data, ci)
             weekago = vdata[i];
             break;
         }
+    if (!weekago)
+        return;
 
     tr.append(makedatetd(weekago[0]));
     tr.append(makenumtd(weekago[1]));
