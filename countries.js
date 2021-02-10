@@ -1,6 +1,8 @@
 // list of mostly countries, with area and population.
 
 const cinfo = {
+"Cayman Islands":{area:264, population:65813},
+"Faeroe Islands":{area:1399, population:52110},
 "Afghanistan":{area:647500, population:37171921},
 "Albania":{area:28748, population:2876591},
 "Algeria":{area:2381740, population:34178188},
