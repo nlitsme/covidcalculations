@@ -23,53 +23,89 @@
 }
 </style>
 <script src="filter.js" ></script>
+<script src="plot.js" ></script>
 <script src="gemeenten.js" ></script>
 <script src="jsutils.js" ></script>
 <script language=javascript><!--
 
 const RIVMURL = "https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.json";
-
-// herindelingen:
-//  2021-01-01 : Appingedam, Delfzijl en Loppersum zijn samengevoegd tot: Eemsdelta
-//  2021-01-01 : Haaren  is opgeheven, en verdeeld over Boxtel, Oisterwijk, Vught en Tilburg.
-//  2021-01-01 : Hengelo is van naam veranderd, in: Hengelo (O.)
-
 var mincases = 50;
 var minpop = 10000;
 var cutoff = 1/12;
 var bvalue = 0.1;
 var filt = new LowPass(cutoff, bvalue);
+
+var g_graphvalues;
+
 function updfilt()
 {
     // update the global filter with the new cutoff and b values.
     filt = cutoff ? new LowPass(cutoff, bvalue) : null;
 }
 
+function hidegraph()
+{
+    var canvas = document.getElementById("graphdiv");
+    canvas.style.visibility = 'hidden';
+
+    var tbl = document.getElementById('tablediv');
+    tbl.style.visibility = 'visible';
+}
+function showgraph()
+{
+
+    var gdiv = document.getElementById("graphdiv");
+    gdiv.style.visibility = 'visible';
+
+    var tdiv = document.getElementById('tablediv');
+    tdiv.style.visibility = 'hidden';
+
+    gdiv.style.position = "absolute";
+    gdiv.style.top = window.scrollY;
+}
+function updategraph()
+{
+    var canvas = document.getElementById("detailgraph");
+    var plot = new Plot(canvas);
+    plot.setgraph(0, g_graphvalues);
+    if (filt)
+        plot.setgraph(1, filt.calc(g_graphvalues));
+    plot.rescale();
+
+    plot.display();
+}
 function makegraph(values)
 {
     // create a graph for the list of values, optionally applying the filter.
     var td = el('td');
     var canvas = el('canvas');
     td.append(canvas);
-
-    if (filt)
-        values = filt.calc(values);
-
-    var ymax = Math.max(...values);
-    var ymin = Math.min(...values);
-
-    values = values.map( y => (y-ymin)/(ymax-ymin) );
+    var origvalues = [...values];
+    canvas.addEventListener('click', (() => { g_graphvalues = origvalues; showgraph(); update(); } ))
 
     var cvx = (x) => 2*x;
 
     canvas.width = cvx(values.length);
     canvas.height = 40;
 
+    var ofs = 0;
+    if (filt) {
+        values = filt.calc(values);
+        values = values.slice(Math.ceil(1/bvalue), -Math.ceil(1/bvalue))
+        ofs = Math.ceil(1/bvalue);
+        cvx = (x) => 2*(x + ofs);
+    }
+
+    var ymax = Math.max(...values);
+    var ymin = Math.min(...values);
+
+    values = values.map( y => (y-ymin)/(ymax-ymin) );
+
     var cvy = (y) => (canvas.height-5-y*(canvas.height-10));
 
     var ctx = canvas.getContext("2d");
     ctx.beginPath();
-    ctx.moveTo(0, cvy(values[0]));
+    ctx.moveTo(cvx(0), cvy(values[0]));
     for (var x=1 ; x<values.length ; x++)
         ctx.lineTo(cvx(x), cvy(values[x]));
     ctx.stroke();
@@ -111,7 +147,7 @@ function makerow(name, data, gi)
     var today = table[table.length-1];
     var fourdays = table[table.length-5];
     var lastweek = table[table.length-8];
-    var last18 = table[table.length-19];
+    var last14 = table[table.length-15];
 
     tr.append(makenumtd(today.gevallen/inwoners*100000, 1));
 
@@ -120,7 +156,7 @@ function makerow(name, data, gi)
         return;
     tr.append(makenumtd(weekincidence, 1));
 
-    var rval = (today.gevallen-fourdays.gevallen)/(today.gevallen-last18.gevallen)*18/4;
+    var rval = last14 ? (today.gevallen-fourdays.gevallen)/(today.gevallen-last14.gevallen)*14/4 : 0;
     tr.append(makenumtd(rval, 2));
 
     tr.append(makegraph(diff.slice(-90).map( e => e.gevallen )));
@@ -150,7 +186,7 @@ function makesliders()
 {
     // create the sliders for the 'controlsdiv'
     return [
-        makeslider("smoothing:<br>", "cutoff", 0, 500, 140, t => { cutoff = Number(t)/1000; updfilt(); }, () => (1/cutoff).toFixed(1)+" days"),
+        makeslider("smoothing:<br>", "cutoff", 0, 20, 10, t => { t = Number(t); cutoff = t ? 1/t : 0; updfilt(); }, () => cutoff ? (1/cutoff).toFixed(0)+" days" : "off"),
         makeslider("depth:", "depth", 1, 100, 16, t => { bvalue = 4/Number(t); updfilt(); }, () => (4/bvalue).toFixed(0)),
         makeslider("mincases:", "mincases", 0, 800, 50, t => mincases = Number(t), () => mincases.toFixed(0)),
         makeslider("minpop:", "minpop", 0, 100, 10, t => minpop = Number(t)*1000, () => (minpop/1000).toFixed(1)+"K"),
@@ -176,6 +212,12 @@ function bygembydate(table)
         var date = rec.Date_of_report;
         var name = rec.Municipality_name;
         if (name) {
+
+        // herindelingen:
+        //  2021-01-01 : Appingedam, Delfzijl en Loppersum zijn samengevoegd tot: Eemsdelta
+        //  2021-01-01 : Haaren  is opgeheven, en verdeeld over Boxtel, Oisterwijk, Vught en Tilburg.
+        //  2021-01-01 : Hengelo is van naam veranderd, in: Hengelo (O.)
+
             if (name == "Loppersum" || name == "Delfzijl" || name == "Appingedam")
                 name = "Eemsdelta";
             else if (name=="Hengelo (O.)")
@@ -202,23 +244,35 @@ function start()
     var div = document.getElementById("tablediv");
     var tab = el('table');
     tab.id = "table";
-    createheader(tab.createTHead());
-    div.appendChild(tab);
-
-    add_sorter(tab);
-}
-
-function update()
-{
-    // the table has three body sections, one for the whole country, 
-    // one section with provinces, and one with the list of municipalities.
-    // The three sections always stay in the same order, entries
-    // within a section can be sorted
-    var tab = document.getElementById('table');
     tab.cellSpacing = 0;
     tab.cellPadding = 5;
     tab.border = true;
 
+    createheader(tab.createTHead());
+    div.appendChild(tab);
+
+    add_sorter(tab);
+
+    var gdiv = document.getElementById("graphdiv");
+    gdiv.addEventListener('click', (() => { g_graphvalues = null; hidegraph(); update(); } ))
+    gdiv.width = 800;
+    gdiv.height = 500;
+
+    var canvas = document.getElementById("detailgraph");
+    canvas.width = 800;
+    canvas.height = 500;
+}
+
+function update()
+{
+    if (g_graphvalues) {
+        updategraph();
+        return;
+    }
+    // the table has three body sections, one for the whole country, 
+    // one section with provinces, and one with the list of municipalities.
+    // The three sections always stay in the same order, entries
+    // within a section can be sorted
     var bodies = [];
 
     var tbody = el('tbody');
@@ -235,6 +289,7 @@ function update()
     Object.entries(g_table).forEach( ([name, data]) => { if (name.startsWith("Provincie") || name=="Nederland") return; var row = makerow(name, data, ginfo[name]); if (row) tbody.append(row); } );
     bodies.push(tbody);
 
+    var tab = document.getElementById('table');
     tab.replaceChildren(tab.tHead, ...bodies);
 
     if (tab.currentsortcolumn)
@@ -279,12 +334,16 @@ function add_sorter(table)
 Data from <a href="https://data.rivm.nl/covid-19/">rivm</a>. More tables: <a href="vac.html">vaccinations</a>, <a href="owid.html">OWID country data</a>.<br>
 <br>
 This table shows the current Covid-19 infection levels in the various Dutch municipalities and provinces.
-Click table headers to sort, slide the filter to smooth the graphs, slide 'cutoff' up to turn off smoothing filter, use `mincases` to show less entries.<br><p>
+Click table headers to sort, slide the filter to smooth the graphs, slide 'cutoff' up to turn off smoothing filter, use `mincases` to show less entries.
+Note that the filtered graphs will be shorter, this can be adjusted with the 'bvalue' slider, this makes the filter less accurate. Click on the graph for a detailed graph view.<br><p>
+
 Created by Willem Hengeveld &lt;<a href="mailto:itsme@xs4all.nl">itsme@xs4all.nl</a>&gt;, <a href="https://itsme.home.xs4all.nl/">homepage</a>, <a href="https://github.com/nlitsme/covidcalculations">source code</a>.
     </div>
 
     <div id="controlsdiv"></div>
     <div id="tablediv"></div>
+    <div id="graphdiv"> <canvas id="detailgraph"></canvas> </div>
+    <div id="weekdiv"> </div>
 
 </body>
 </html>
