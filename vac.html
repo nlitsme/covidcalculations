@@ -34,6 +34,7 @@ function makegraph(values)
 {
     // create a graph for the list of (t, y) pairs.
     var td = el('td');
+    td.style.textAlign = 'right';
     var canvas = el('canvas');
     td.append(canvas);
 
@@ -41,10 +42,11 @@ function makegraph(values)
     var ymin = Math.min(...values.map(pair=>pair[1]));
     var tmin = values[0][0].getTime();
     var tmax = values[values.length-1][0].getTime();
+    var tnow = new Date().getTime();
 
     values = values.map( ([t,y]) => [t, (y-ymin)/(ymax-ymin)] );
 
-    canvas.width = (tmax-tmin)/(86400*1000)*5;
+    canvas.width = (tnow-tmin)/(86400*1000)*5;
     canvas.height = 40;
 
     var cvy = (y) => (canvas.height-5-y*(canvas.height-10));
