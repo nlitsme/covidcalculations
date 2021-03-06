@@ -49,6 +49,7 @@ function makeslider(label, idtag, minvalue, maxvalue, initval, texttoval, valtot
     inp.style.width = 100;
     inp.style.height = 100;
 
+    texttoval(inp.value);
     disp.innerHTML = valtotext();
 
     var div = el('div', {id:idtag+"div"});
