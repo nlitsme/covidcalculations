@@ -1,6 +1,11 @@
 // list of mostly countries, with area and population.
 
 const cinfo = {
+"Greenland":{area:2166086, population:56081},
+"Hong Kong":{area:2755, population:7500700},
+"Anguilla":{area:91, population:14731},
+"Falkland Islands":{area:12200, population:3398},
+"Macao":{area:115.3, population:682800},
 "Cayman Islands":{area:264, population:65813},
 "Faeroe Islands":{area:1399, population:52110},
 "Afghanistan":{area:647500, population:37171921},
