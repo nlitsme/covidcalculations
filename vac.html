@@ -5,6 +5,7 @@
 <meta http-equiv=“Pragma” content=”no-cache”>
 <meta http-equiv=“Expires” content=”-1″>
 <meta http-equiv=“CACHE-CONTROL” content=”NO-CACHE”>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="keywords" content="covid,vaccination,estimation">
 <meta name="author" content="Willem Hengeveld, itsme@xs4all.nl">
 <meta name="description" content="Calculate when the various countries would be done with their COVID vaccination program.">
@@ -14,6 +15,7 @@
     right:0px;
     top:100px;
     width:120px;
+    z-index:5;
 }
 #tablediv {
     position:absolute;
@@ -70,13 +72,17 @@ function calcdifferences(table)
     var prev;
     for (var ent of table)
     {
-        if (prev)
+        if (prev && ent[1]-prev[1]) {
+            // note: ignoring entries which show 0 progress.
             res.push([
                 ent[0],         // the time
                 (ent[1]-prev[1])/(ent[0]-prev[0])*86400*1000, // the value
             ]);
-
-        prev = ent;
+            prev = ent;
+        }
+        else if (!prev) {
+            prev = ent;
+        }
     }
     return res;
 }
@@ -198,6 +204,23 @@ function update()
 
     if (tab.currentsortcolumn)
         sortbycolumn(tab, tab.currentsortcolumn);
+
+
+    var infor = document.getElementById("infodiv").getBoundingClientRect();
+    var tabler = document.getElementById("tablediv").getBoundingClientRect();
+    if (infor.bottom > tabler.top) {
+        var tdiv = document.getElementById("tablediv")
+        tdiv.style.top = 20;
+        var adiv = document.getElementById("authordiv")
+        adiv.style.position = "absolute";
+        adiv.style.top = 0;
+        var idiv = document.getElementById("infodiv");
+        idiv.style.position = "absolute";
+        idiv.style.top = 30;
+
+        idiv.style.zIndex = 0; 
+        idiv.style.opacity= 0.1;
+    }
 }
 
 function sortbycolumn(table, th)
@@ -235,7 +258,7 @@ function add_sorter(table)
 --></script>
 </head>
 <body onLoad="start()">
-    <div>
+<div id="infodiv">
 Data from <a href="https://github.com/owid/covid-19-data/blob/master/public/data/vaccinations/">OurWorldInData</a>.
 More tables:
 <a href="owid.html">country info</a>,
@@ -247,8 +270,10 @@ This table shows the estimated date when each country's vaccination program will
     Use the 'vacpp' slider to select how many vaccinations are required per person.
     Use the 'days' slider to select how many days to average for the calculation.
 The graph shows how many vaccinations are delivered per day. Click table headers to sort.<br><p>
+</div>
+<div id="authordiv">
 Created by Willem Hengeveld &lt;<a href="mailto:itsme@xs4all.nl">itsme@xs4all.nl</a>&gt;, <a href="https://itsme.home.xs4all.nl/">homepage</a>, <a href="https://github.com/nlitsme/covidcalculations">source code</a>.
-    </div>
+</div>
 
     <div id="controlsdiv"></div>
     <div id="tablediv"></div>

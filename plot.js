@@ -6,6 +6,9 @@ class Plot {
     {
         this.canvas = canvas
         this.graphs = []
+        this.colors = [
+"#b22727", "#b29727", "#5fb327", "#2797b3", "#2727b3", "#9727b3", "#b2275f"
+        ];
     }
     setgraph(id, values)
     {
@@ -25,8 +28,10 @@ class Plot {
         var mi;
         var ma;
         var nma;
-        for (const g of this.graphs) {
-            for (const yval of g) {
+        for (var g of this.graphs) {
+            for (var yval of g) {
+                if (typeof(yval)!="number")
+                    yval = yval[1];
                 if (mi === undefined || yval<mi)
                     mi = yval;
                 if (ma === undefined || yval>ma)
@@ -46,13 +51,28 @@ class Plot {
         var ctx = this.canvas.getContext("2d")
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        ctx.strokeStyle = "#000000";
-        ctx.fillStyle = "#000000";
-        for (const g of this.graphs) {
+        this.graphs.forEach( (g, gi) => {
+
+            if (gi<7) {
+                ctx.strokeStyle = this.colors[gi];
+                ctx.fillStyle = this.colors[gi];
+            }
+            else if (gi==7) {
+                ctx.strokeStyle = "#000000";
+                ctx.fillStyle = "#000000";
+            }
+            else {
+                ctx.strokeStyle = "#ff0000";
+                ctx.fillStyle = "#ff0000";
+            }
             var xp = undefined;
             var yp = undefined;
-            for (const x in g) {
+            for (var x in g) {
                 var y = g[x];
+                if (typeof(y)!="number") {
+                    x = y[0];
+                    y = y[1];
+                }
 
                 this.drawdot(ctx, x, y);
                 if (xp !== undefined)
@@ -60,9 +80,7 @@ class Plot {
 
                 xp = x; yp = y;
             }
-            ctx.strokeStyle = "#ff0000";
-            ctx.fillStyle = "#ff0000";
-        }
+        });
     }
 
     drawdot(ctx, x, y)

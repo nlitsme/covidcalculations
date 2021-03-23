@@ -5,6 +5,7 @@
 <meta http-equiv=“Pragma” content=”no-cache”>
 <meta http-equiv=“Expires” content=”-1″>
 <meta http-equiv=“CACHE-CONTROL” content=”NO-CACHE”>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="keywords" content="covid,statistics,netherlands,rivm">
 <meta name="author" content="Willem Hengeveld, itsme@xs4all.nl">
 <meta name="description" content="show rivm.nl (The Dutch health institute) covid information.">
@@ -14,6 +15,7 @@
     right:0px;
     top:100px;
     width:120px;
+    z-index:5;
 }
 #tablediv {
     position:absolute;
@@ -36,6 +38,8 @@ var bvalue = 0.1;
 var filt = new LowPass(cutoff, bvalue);
 
 var g_graphvalues;
+var g_rdaysa = 7;
+var g_rdaysb = 14;
 
 function updfilt()
 {
@@ -43,7 +47,7 @@ function updfilt()
     filt = cutoff ? new LowPass(cutoff, bvalue) : null;
 }
 
-function hidegraph()
+function hidedetailgraph()
 {
     var canvas = document.getElementById("graphdiv");
     canvas.style.visibility = 'hidden';
@@ -51,7 +55,7 @@ function hidegraph()
     var tbl = document.getElementById('tablediv');
     tbl.style.visibility = 'visible';
 }
-function showgraph()
+function showdetailgraph()
 {
 
     var gdiv = document.getElementById("graphdiv");
@@ -63,16 +67,66 @@ function showgraph()
     gdiv.style.position = "absolute";
     gdiv.style.top = window.scrollY;
 }
-function updategraph()
+// todo: change my plotting fns to always take (x,y) pairs
+function updatedetailgraph()
 {
     var canvas = document.getElementById("detailgraph");
     var plot = new Plot(canvas);
-    plot.setgraph(0, g_graphvalues);
-    if (filt)
-        plot.setgraph(1, filt.calc(g_graphvalues));
+    for (var i=0 ; i<7 ; i++)
+    {
+        var stepped = [];
+        for (var x=i ; x<g_graphvalues.length ; x+=7)
+            stepped.push([x, g_graphvalues[x]]);
+        plot.setgraph(i, stepped);
+    }
+    plot.setgraph(7, g_graphvalues);
+
+    if (filt) {
+        var values = filt.calc(g_graphvalues);
+        //values = values.slice(Math.ceil(1/bvalue), -Math.ceil(1/bvalue))
+        plot.setgraph(8, values);
+    }
+
     plot.rescale();
 
     plot.display();
+}
+function makestepgraph(values)
+{
+    colors = [
+"#b22727", "#b29727", "#5fb327", "#2797b3", "#2727b3", "#9727b3", "#b2275f"
+    ];
+
+    // create a graph for the list of values, optionally applying the filter.
+    var td = el('td');
+    var canvas = el('canvas');
+    td.append(canvas);
+
+    var cvx = (x) => 2*x;
+
+    canvas.width = cvx(values.length);
+    canvas.height = 40;
+
+    var ymax = Math.max(...values);
+    var ymin = Math.min(...values);
+
+    values = values.map( y => (y-ymin)/(ymax-ymin) );
+
+    var cvy = (y) => (canvas.height-5-y*(canvas.height-10));
+
+    var ctx = canvas.getContext("2d");
+    for (var i=0 ; i<7 ; i++) {
+        ctx.strokeStyle = colors[i];
+        ctx.fillStyle = colors[i];
+
+        ctx.beginPath();
+        ctx.moveTo(cvx(i), cvy(values[i]));
+        for (var x=i+7 ; x<values.length ; x+=7)
+            ctx.lineTo(cvx(x), cvy(values[x]));
+        ctx.stroke();
+    }
+
+    return td;
 }
 function makegraph(values)
 {
@@ -81,7 +135,7 @@ function makegraph(values)
     var canvas = el('canvas');
     td.append(canvas);
     var origvalues = [...values];
-    canvas.addEventListener('click', (() => { g_graphvalues = origvalues; showgraph(); update(); } ))
+    canvas.addEventListener('click', (() => { g_graphvalues = origvalues; showdetailgraph(); update(); } ))
 
     var cvx = (x) => 2*x;
 
@@ -145,18 +199,19 @@ function makerow(name, data, gi)
     var diff = calcdifferences(table);
 
     var today = table[table.length-1];
-    var fourdays = table[table.length-5];
+    var fourdays = table[table.length-1-g_rdaysa];
     var lastweek = table[table.length-8];
-    var last14 = table[table.length-15];
+    var last14 = table[table.length-1-g_rdaysb];
 
     tr.append(makenumtd(today.gevallen/inwoners*100000, 1));
 
     var weekincidence = (today.gevallen-lastweek.gevallen)/inwoners*100000;
-    if (weekincidence < mincases)
-        return;
     tr.append(makenumtd(weekincidence, 1));
 
-    var rval = last14 ? (today.gevallen-fourdays.gevallen)/(today.gevallen-last14.gevallen)*14/4 : 0;
+    if (weekincidence < mincases)
+        return;
+
+    var rval = last14 ? (today.gevallen-fourdays.gevallen)/(today.gevallen-last14.gevallen)*g_rdaysb/g_rdaysa : 0;
     tr.append(makenumtd(rval, 2));
 
     tr.append(makegraph(diff.slice(-90).map( e => e.gevallen )));
@@ -165,6 +220,8 @@ function makerow(name, data, gi)
     tr.append(makenumtd(weekincidence, 1));
 
     tr.append(makegraph(diff.slice(-90).map( e => e.overleden )));
+    tr.append(makestepgraph(diff.slice(-90).map( e => e.gevallen )));
+    tr.append(makestepgraph(diff.slice(-90).map( e => e.overleden )));
 
     return tr;
 }
@@ -190,6 +247,8 @@ function makesliders()
         makeslider("depth:", "depth", 1, 100, 16, t => { bvalue = 4/Number(t); updfilt(); }, () => (4/bvalue).toFixed(0)),
         makeslider("mincases:", "mincases", 0, 800, 50, t => mincases = Number(t), () => mincases.toFixed(0)),
         makeslider("minpop:", "minpop", 0, 100, 10, t => minpop = Number(t)*1000, () => (minpop/1000).toFixed(1)+"K"),
+        makeslider("r1:", "r1", 1, 14, 7, t => g_rdaysa = Number(t), () => g_rdaysa.toFixed(0)+"days"),
+        makeslider("r2:", "r2", 1, 28, 14, t => g_rdaysb = Number(t), () => g_rdaysb.toFixed(0)+"days"),
     ];
 }
 
@@ -254,7 +313,7 @@ function start()
     add_sorter(tab);
 
     var gdiv = document.getElementById("graphdiv");
-    gdiv.addEventListener('click', (() => { g_graphvalues = null; hidegraph(); update(); } ))
+    gdiv.addEventListener('click', (() => { g_graphvalues = null; hidedetailgraph(); update(); } ))
     gdiv.width = 800;
     gdiv.height = 500;
 
@@ -266,7 +325,7 @@ function start()
 function update()
 {
     if (g_graphvalues) {
-        updategraph();
+        updatedetailgraph();
         return;
     }
     // the table has three body sections, one for the whole country, 
@@ -294,6 +353,23 @@ function update()
 
     if (tab.currentsortcolumn)
         sortbycolumn(tab, tab.currentsortcolumn);
+
+
+    var infor = document.getElementById("infodiv").getBoundingClientRect();
+    var tabler = document.getElementById("tablediv").getBoundingClientRect();
+    if (infor.bottom > tabler.top) {
+        var tdiv = document.getElementById("tablediv")
+        tdiv.style.top = 20;
+        var adiv = document.getElementById("authordiv")
+        adiv.style.position = "absolute";
+        adiv.style.top = 0;
+        var idiv = document.getElementById("infodiv");
+        idiv.style.position = "absolute";
+        idiv.style.top = 30;
+
+        idiv.style.zIndex = 0; 
+        idiv.style.opacity= 0.1;
+    }
 }
 
 function sortbycolumn(table, th)
@@ -330,7 +406,7 @@ function add_sorter(table)
 --></script>
 </head>
 <body onLoad="start()">
-    <div>
+<div id="infodiv">
 Data from <a href="https://data.rivm.nl/covid-19/">rivm</a>.
 More tables:
 <a href="owid.html">country info</a>,
@@ -342,8 +418,10 @@ This table shows the current Covid-19 infection levels in the various Dutch muni
 Click table headers to sort, slide the filter to smooth the graphs, slide 'cutoff' up to turn off smoothing filter, use `mincases` to show less entries.
 Note that the filtered graphs will be shorter, this can be adjusted with the 'bvalue' slider, this makes the filter less accurate. Click on the graph for a detailed graph view.<br><p>
 
+</div>
+<div id="authordiv">
 Created by Willem Hengeveld &lt;<a href="mailto:itsme@xs4all.nl">itsme@xs4all.nl</a>&gt;, <a href="https://itsme.home.xs4all.nl/">homepage</a>, <a href="https://github.com/nlitsme/covidcalculations">source code</a>.
-    </div>
+</div>
 
     <div id="controlsdiv"></div>
     <div id="tablediv"></div>
