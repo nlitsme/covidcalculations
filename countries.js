@@ -1,6 +1,16 @@
 // list of mostly countries, with area and population.
 
 const cinfo = {
+"Saint Helena":{area:121, population:4534},
+"Cote d'Ivoire":{area:322463   , population:26378274  },
+"Oceania":{area:8525989   , population:41570842  },
+"Africa":{area:30370000   , population: 1275920972 },
+"South America":{area:17840000   , population:423581078  },
+"Asia":{area:44579000   , population:4560667108  },
+"North America":{area:24709000   , population:579024000  },
+"Europe":{area:10180000   , population:746419440  },
+"Montserrat":{area:102   , population:4649  },
+
 "Greenland":{area:2166086, population:56081},
 "Hong Kong":{area:2755, population:7500700},
 "Anguilla":{area:91, population:14731},
