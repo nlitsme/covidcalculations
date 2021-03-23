@@ -229,7 +229,7 @@ function makerow(name, data, gi)
 function createheader(th)
 {
     // create the table header row
-    var headers = [ "Municipality", "population", "total/100k", "cases<br>/week/100k", "rval", "casegraph", "deaths<br>/week/100k", "deathsgraph" ];
+    var headers = [ "Municipality", "population", "total/100k", "cases<br>/week/100k", "rval", "casegraph", "deaths<br>/week/100k", "deathsgraph", "dayofweek" ];
 
     var tr = th.insertRow(0);
     for (var h of headers) {
@@ -416,7 +416,9 @@ More tables:
 <br>
 This table shows the current Covid-19 infection levels in the various Dutch municipalities and provinces.
 Click table headers to sort, slide the filter to smooth the graphs, slide 'cutoff' up to turn off smoothing filter, use `mincases` to show less entries.
-Note that the filtered graphs will be shorter, this can be adjusted with the 'bvalue' slider, this makes the filter less accurate. Click on the graph for a detailed graph view.<br><p>
+Note that the filtered graphs will be shorter, this can be adjusted with the 'bvalue' slider, this makes the filter less accurate. Click on the graph for a detailed graph view. 
+The colored graphs are the graphs for the days of the week, all mondays, all tuesdays, etc.
+<br><p>
 
 </div>
 <div id="authordiv">
