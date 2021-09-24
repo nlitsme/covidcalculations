@@ -1,6 +1,10 @@
 // list of mostly countries, with area and population.
 
 const cinfo = {
+"Gambia": {area: 10689, population:2173999},
+"Curacao": {area: 444, population:163424},
+"Bahamas": {area: 13878, population:385637},
+"Aruba": {area: 180, population:116576},
 "Sao Tome and Principe":{area: 1001, population:211028},
 "Taiwan":{area:36197, population:23568378},
 "Turks and Caicos Islands":{area:616, population:42953},
