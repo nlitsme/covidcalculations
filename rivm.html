@@ -33,19 +33,75 @@
 const RIVMURL = "https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.json";
 var mincases = 50;
 var minpop = 10000;
-var cutoff = 1/12;
-var bvalue = 0.1;
-var filt = new LowPass(cutoff, bvalue);
+
+class Filter {
+    constructor()
+    {
+        this.cutoff = 1/7;
+        this.bvalue = 0;
+        this.filt = null;
+        this.updfilt();
+    }
+    updfilt()
+    {
+        // update the global filter with the new cutoff and b values.
+        if (this.cutoff==0) {
+            // no filter
+            this.filt = null;
+        }
+        else if (this.bvalue==0) {
+            // smoothing
+            this.filt = new Smoothing(Math.round(1/this.cutoff));
+        }
+        else {
+            this.filt = new LowPass(this.cutoff, this.bvalue);
+        }
+    }
+    hasfilter()
+    {
+        return this.cutoff != 0;
+    }
+    calc(vec)
+    {
+        return this.filt.calc(vec);
+    }
+    setcutoff(t)
+    {
+        t = Number(t);
+        this.cutoff = t ? 1/t : 0;
+        this.updfilt();
+    }
+    setdepth(t)
+    {
+        t = Number(t);
+        this.bvalue = t ? 4/t : 0;
+        this.updfilt();
+    }
+    getcutofftext()
+    {
+        return this.cutoff ? (1/this.cutoff).toFixed(0)+" days" : "off"
+    }
+    getdepthtext()
+    {
+        return this.bvalue ? (4/this.bvalue).toFixed(0) : "smoothing"
+    }
+
+    getcutoffvalue()
+    {
+        return this.cutoff ? 1/this.cutoff : 0;
+    }
+    getdepthvalue()
+    {
+        return this.bvalue ? 4/this.bvalue : 0;
+    }
+
+};
+
+var filt = new Filter();
 
 var g_graphvalues;
 var g_rdaysa = 7;
 var g_rdaysb = 14;
-
-function updfilt()
-{
-    // update the global filter with the new cutoff and b values.
-    filt = cutoff ? new LowPass(cutoff, bvalue) : null;
-}
 
 function hidedetailgraph()
 {
@@ -81,9 +137,8 @@ function updatedetailgraph()
     }
     plot.setgraph(7, g_graphvalues);
 
-    if (filt) {
+    if (filt.hasfilter()) {
         var values = filt.calc(g_graphvalues);
-        //values = values.slice(Math.ceil(1/bvalue), -Math.ceil(1/bvalue))
         plot.setgraph(8, values);
     }
 
@@ -143,11 +198,13 @@ function makegraph(values)
     canvas.height = 40;
 
     var ofs = 0;
-    if (filt) {
+    if (filt.hasfilter()) {
         values = filt.calc(values);
-        values = values.slice(Math.ceil(1/bvalue), -Math.ceil(1/bvalue))
-        ofs = Math.ceil(1/bvalue);
-        cvx = (x) => 2*(x + ofs);
+        if (filt.bvalue && filt.cutoff) {
+            values = values.slice(Math.ceil(1/filt.bvalue), -Math.ceil(1/filt.bvalue))
+            ofs = Math.ceil(1/filt.bvalue);
+            cvx = (x) => 2*(x + ofs);
+        }
     }
 
     var ymax = Math.max(...values);
@@ -193,6 +250,7 @@ function makerow(name, data, gi)
     var inwoners = gi ? gi.inwoners : 0;
     if (inwoners < minpop)
         return;
+    var popdensity = inwoners / gi.land;
     tr.append(makenumtd(inwoners));
 
     var table = Object.entries(data).sort().map( ([k,v])=>v );
@@ -210,6 +268,8 @@ function makerow(name, data, gi)
 
     if (weekincidence < mincases)
         return;
+
+    tr.append(makenumtd(weekincidence/popdensity, 1));
 
     var rval = last14 ? (today.gevallen-fourdays.gevallen)/(today.gevallen-last14.gevallen)*g_rdaysb/g_rdaysa : 0;
     tr.append(makenumtd(rval, 2));
@@ -229,7 +289,7 @@ function makerow(name, data, gi)
 function createheader(th)
 {
     // create the table header row
-    var headers = [ "Municipality", "population", "total/100k", "cases<br>/week/100k", "rval", "casegraph", "deaths<br>/week/100k", "deathsgraph", "dayofweek" ];
+    var headers = [ "Municipality", "population", "total/100k", "cases<br>/week/100k", "cppkm", "rval", "casegraph", "deaths<br>/week/100k", "deathsgraph", "dayofweek" ];
 
     var tr = th.insertRow(0);
     for (var h of headers) {
@@ -243,8 +303,8 @@ function makesliders()
 {
     // create the sliders for the 'controlsdiv'
     return [
-        makeslider("smoothing:<br>", "cutoff", 0, 20, 10, t => { t = Number(t); cutoff = t ? 1/t : 0; updfilt(); }, () => cutoff ? (1/cutoff).toFixed(0)+" days" : "off"),
-        makeslider("depth:", "depth", 1, 100, 16, t => { bvalue = 4/Number(t); updfilt(); }, () => (4/bvalue).toFixed(0)),
+        makeslider("smoothing:<br>", "cutoff", 0, 20, filt.getcutoffvalue(), t => filt.setcutoff(t), () => filt.getcutofftext()),
+        makeslider("depth:", "depth", 0, 100, filt.getdepthvalue(), t => filt.setdepth(t), () => filt.getdepthtext()),
         makeslider("mincases:", "mincases", 0, 800, 50, t => mincases = Number(t), () => mincases.toFixed(0)),
         makeslider("minpop:", "minpop", 0, 100, 10, t => minpop = Number(t)*1000, () => (minpop/1000).toFixed(1)+"K"),
         makeslider("r1:", "r1", 1, 14, 7, t => g_rdaysa = Number(t), () => g_rdaysa.toFixed(0)+"days"),
@@ -284,7 +344,7 @@ function bygembydate(table)
 
             addto(dict, name, date, rec);
         }
-        var prov = rec.Province.startsWith("Frys")? "Provincie Friesland" : "Provincie "+rec.Province;
+        var prov = rec.Province ? rec.Province.startsWith("Frys")? "Provincie Friesland" : "Provincie "+rec.Province : "null";
         addto(dict, prov, date, rec);
         addto(dict, "Nederland", date, rec);
     }
@@ -295,7 +355,7 @@ function start()
 {
     // This function is called from body.onLoad, starts the fetch,
     // and creates the controls and tables.
-    fetch(RIVMURL).then(r => r.json()).then( r => { g_table = bygembydate(r); update(); });
+    fetch(RIVMURL, { cache: 'no-store' }).then(r => r.json()).then( r => { g_table = bygembydate(r); update(); });
 
     var div = document.getElementById("controlsdiv");
     div.append(...makesliders());

@@ -48,3 +48,26 @@ class LowPass {
     }
 };
 
+// simple n-day smoothing.
+class Smoothing {
+    constructor(ndays)
+    {
+        this.ndays = ndays;
+    }
+    calc(vec)
+    {
+        /*
+
+            r[i] = sum(v[i-j], j=0..N-1)/N
+         */
+        var res = [];
+        for (var i=this.ndays-1 ; i<vec.length ; i++)
+        {
+            var sum = 0;
+            for (var j=0 ; j<this.ndays ; j++)
+                sum += vec[i-j];
+            res.push(sum/this.ndays);
+        }
+        return res;
+    }
+};

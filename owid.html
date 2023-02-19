@@ -31,19 +31,75 @@
 const OWIDURL = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv";
 var mincases = 50;
 var minpop = 500000;
-var cutoff = 0.10;
-var bvalue = 0.1;
-var filt = new LowPass(cutoff, bvalue);
+
+class Filter {
+    constructor()
+    {
+        this.cutoff = 1/7;
+        this.bvalue = 0;
+        this.filt = null;
+        this.updfilt();
+    }
+    updfilt()
+    {
+        // update the global filter with the new cutoff and b values.
+        if (this.cutoff==0) {
+            // no filter
+            this.filt = null;
+        }
+        else if (this.bvalue==0) {
+            // smoothing
+            this.filt = new Smoothing(Math.round(1/this.cutoff));
+        }
+        else {
+            this.filt = new LowPass(this.cutoff, this.bvalue);
+        }
+    }
+    hasfilter()
+    {
+        return this.cutoff != 0;
+    }
+    calc(vec)
+    {
+        return this.filt.calc(vec);
+    }
+    setcutoff(t)
+    {
+        t = Number(t);
+        this.cutoff = t ? 1/t : 0;
+        this.updfilt();
+    }
+    setdepth(t)
+    {
+        t = Number(t);
+        this.bvalue = t ? 4/t : 0;
+        this.updfilt();
+    }
+    getcutofftext()
+    {
+        return this.cutoff ? (1/this.cutoff).toFixed(0)+" days" : "off"
+    }
+    getdepthtext()
+    {
+        return this.bvalue ? (4/this.bvalue).toFixed(0) : "smoothing"
+    }
+
+    getcutoffvalue()
+    {
+        return this.cutoff ? 1/this.cutoff : 0;
+    }
+    getdepthvalue()
+    {
+        return this.bvalue ? 4/this.bvalue : 0;
+    }
+
+};
+
+var filt = new Filter();
 
 var g_graphvalues;
 var g_rdaysa = 7;
 var g_rdaysb = 14;
-
-function updfilt()
-{
-    // update the global filter with the new cutoff and b values.
-    filt = cutoff ? new LowPass(cutoff, bvalue) : null;
-}
 
 function hidedetailgraph()
 {
@@ -78,12 +134,10 @@ function updatedetailgraph()
     }
     plot.setgraph(7, g_graphvalues);
 
-    if (filt) {
+    if (filt.hasfilter()) {
         var values = filt.calc(g_graphvalues);
-        //values = values.slice(Math.ceil(1/bvalue), -Math.ceil(1/bvalue))
         plot.setgraph(8, values);
     }
-
 
     plot.rescale();
 
@@ -141,11 +195,13 @@ function makegraph(values)
     canvas.height = 40;
 
     var ofs = 0;
-    if (filt) {
+    if (filt.hasfilter()) {
         values = filt.calc(values);
-        values = values.slice(Math.ceil(1/bvalue), -Math.ceil(1/bvalue))
-        ofs = Math.ceil(1/bvalue);
-        cvx = (x) => 2*(x + ofs);
+        if (filt.bvalue && filt.cutoff) {
+            values = values.slice(Math.ceil(1/filt.bvalue), -Math.ceil(1/filt.bvalue))
+            ofs = Math.ceil(1/filt.bvalue);
+            cvx = (x) => 2*(x + ofs);
+        }
     }
 
     var ymax = Math.max(...values);
@@ -205,7 +261,7 @@ function makerow(name, data)
     tr.append(makenumtd(today.gevallen/today.inwoners*100000, 1));
     tr.append(makenumtd(today.overleden/today.inwoners*100000, 1));
 
-    var weekincidence = (today.gevallen/today.inwoners-lastweek.gevallen/lastweek.inwoners)*100000;
+    var weekincidence = today && lastweek ? (today.gevallen/today.inwoners-lastweek.gevallen/lastweek.inwoners)*100000 : 0;
     tr.append(makenumtd(weekincidence, 1));
 
     if (weekincidence < mincases)
@@ -243,8 +299,9 @@ function makesliders()
 {
     // create the sliders for the 'controlsdiv'
     return [
-        makeslider("smoothing:<br>", "cutoff", 0, 20, 10, t => { t = Number(t); cutoff = t ? 1/t : 0; updfilt(); }, () => cutoff ? (1/cutoff).toFixed(0)+" days" : "off"),
-        makeslider("depth:", "depth", 1, 100, 16, t => { bvalue = 4/Number(t); updfilt(); }, () => (4/bvalue).toFixed(0)),
+        makeslider("smoothing:<br>", "cutoff", 0, 20, filt.getcutoffvalue(), t => filt.setcutoff(t), () => filt.getcutofftext()),
+        makeslider("depth:", "depth", 0, 100, filt.getdepthvalue(), t => filt.setdepth(t), () => filt.getdepthtext()),
+
         makeslider("mincases:", "mincases", 0, 800, 50, t => mincases = Number(t), () => mincases.toFixed(0)),
         makeslider("minpop:", "minpop", 0, 1000, 50, t => minpop = Number(t)*100000, () => (minpop/1000000).toFixed(2)+"M"),
         makeslider("r1:", "r1", 1, 14, 7, t => g_rdaysa = Number(t), () => g_rdaysa.toFixed(0)+"days"),
@@ -290,7 +347,7 @@ function start()
 {
     // This function is called from body.onLoad, starts the fetch,
     // and creates the controls and tables.
-    fetch(OWIDURL).then(r => r.text()).then( r => { g_table = bycountrybydate(decodecsv(r)); update(); });
+    fetch(OWIDURL, { cache: 'no-store' }).then(r => r.text()).then( r => { g_table = bycountrybydate(decodecsv(r)); update(); });
 
     var div = document.getElementById("controlsdiv");
     div.append(...makesliders());
